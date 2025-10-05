@@ -18,7 +18,11 @@ export default function AppNavigator({ onToggleTheme, isDark }) {
             <LoginScreen {...props} onToggleTheme={onToggleTheme} isDark={isDark} />
           )}
         </Stack.Screen>
-        <Stack.Screen name="Signup" component={SignupScreen} />
+        <Stack.Screen name="Signup">
+          {(props) => (
+            <SignupScreen {...props} onToggleTheme={onToggleTheme} isDark={isDark} />
+          )}
+        </Stack.Screen>
         <Stack.Screen name="Home">
           {(props) => (
             <HomeScreen {...props} onToggleTheme={onToggleTheme} isDark={isDark} />
