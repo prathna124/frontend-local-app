@@ -6,7 +6,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  TouchableOpacity,
+  Dimensions,
 } from "react-native";
 import {
   Text,
@@ -14,107 +14,65 @@ import {
   Button,
   HelperText,
   SegmentedButtons,
-  Checkbox,
-  RadioButton,
   useTheme,
   IconButton,
 } from "react-native-paper";
-import DateTimePicker from "@react-native-community/datetimepicker";
 import {
   validateEmail,
   validatePassword,
   validateName,
+  validateLastName,
   validatePhone,
-  validateDOB,
-  validateAddress,
-  validateCity,
-  validateState,
-  validatePostalCode,
-  validateCountry,
   validateShopName,
 } from "../../utils/validators";
 
-export default function SignupScreen({ navigation, route, onToggleTheme, isDark}) {
+export default function SignupScreen({
+  navigation,
+  route,
+  onToggleTheme,
+  isDark,
+}) {
   const { colors } = useTheme();
-
   const [role, setRole] = useState("customer");
 
-  // Common fields
+  // Fields
   const [name, setName] = useState("");
+  const [lastname, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-
-  // Customer-specific
-  const [dob, setDob] = useState("");
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [shipping, setShipping] = useState({
-    street: "",
-    city: "",
-    state: "",
-    postal: "",
-    country: "",
-    type: "home",
-  });
-  const [billing, setBilling] = useState({
-    street: "",
-    city: "",
-    state: "",
-    postal: "",
-    country: "",
-  });
-  const [sameAsShipping, setSameAsShipping] = useState(true);
-
-  // Shopkeeper-specific
   const [shopName, setShopName] = useState("");
-  const [shopAddress, setShopAddress] = useState({
-    street: "",
-    city: "",
-    state: "",
-    postal: "",
-    country: "",
-  });
-  const [logo, setLogo] = useState(null);
-  const [banner, setBanner] = useState(null);
-  const [addressProof, setAddressProof] = useState(null);
 
   const [errors, setErrors] = useState({});
 
   const validateAll = () => {
-    let newErrors = {};
+    const newErrors = {};
 
-    // Common
-    if (validateName(name)) newErrors.name = validateName(name);
-    if (validateEmail(email)) newErrors.email = validateEmail(email);
-    if (validatePhone(phone)) newErrors.phone = validatePhone(phone);
-    if (validatePassword(password)) newErrors.password = validatePassword(password);
-    if (confirm !== password) newErrors.confirm = "Passwords do not match";
+    // Match backend Joi schema
+    const firstNameErr = validateName(name);
+    if (firstNameErr) newErrors.name = firstNameErr;
 
-    if (role === "customer") {
-      if (validateDOB(dob)) newErrors.dob = validateDOB(dob);
-      if (validateAddress(shipping.street)) newErrors.shippingStreet = validateAddress(shipping.street);
-      if (validateCity(shipping.city)) newErrors.shippingCity = validateCity(shipping.city);
-      if (validateState(shipping.state)) newErrors.shippingState = validateState(shipping.state);
-      if (validatePostalCode(shipping.postal)) newErrors.shippingPostal = validatePostalCode(shipping.postal);
-      if (validateCountry(shipping.country)) newErrors.shippingCountry = validateCountry(shipping.country);
+    const lastNameErr = validateLastName(lastname);
+    if (lastNameErr) newErrors.lastname = lastNameErr;
 
-      if (!sameAsShipping) {
-        if (validateAddress(billing.street)) newErrors.billingStreet = validateAddress(billing.street);
-        if (validateCity(billing.city)) newErrors.billingCity = validateCity(billing.city);
-        if (validateState(billing.state)) newErrors.billingState = validateState(billing.state);
-        if (validatePostalCode(billing.postal)) newErrors.billingPostal = validatePostalCode(billing.postal);
-        if (validateCountry(billing.country)) newErrors.billingCountry = validateCountry(billing.country);
-      }
-    }
+    const emailErr = validateEmail(email);
+    if (emailErr) newErrors.email = emailErr;
+
+    const phoneErr = validatePhone(phone);
+    if (phoneErr) newErrors.phone = phoneErr;
+
+    const passwordErr = validatePassword(password);
+    if (passwordErr) newErrors.password = passwordErr;
+
+    if (!confirm || confirm.trim() === "")
+      newErrors.confirm = "Confirm password is required";
+    else if (confirm !== password)
+      newErrors.confirm = "Passwords do not match";
 
     if (role === "shopkeeper") {
-      if (validateShopName(shopName)) newErrors.shopName = validateShopName(shopName);
-      if (validateAddress(shopAddress.street)) newErrors.shopStreet = validateAddress(shopAddress.street);
-      if (validateCity(shopAddress.city)) newErrors.shopCity = validateCity(shopAddress.city);
-      if (validateState(shopAddress.state)) newErrors.shopState = validateState(shopAddress.state);
-      if (validatePostalCode(shopAddress.postal)) newErrors.shopPostal = validatePostalCode(shopAddress.postal);
-      if (validateCountry(shopAddress.country)) newErrors.shopCountry = validateCountry(shopAddress.country);
+      const shopErr = validateShopName(shopName);
+      if (shopErr) newErrors.shopName = shopErr;
     }
 
     setErrors(newErrors);
@@ -124,35 +82,51 @@ export default function SignupScreen({ navigation, route, onToggleTheme, isDark}
   const handleSignup = () => {
     if (!validateAll()) return;
 
-    let payload = { role, name, email, phone, password };
-
-    if (role === "customer") {
-      payload = { ...payload, dob, shipping, billing: sameAsShipping ? shipping : billing };
-    } else {
-      payload = { ...payload, shopName, shopAddress, logo, banner, addressProof };
-    }
+    const payload = {
+      user_type: role,
+      first_name: name.trim(),
+      last_name: lastname.trim(),
+      email: email.trim(),
+      phone_number: phone.trim(),
+      password_hash: password,
+      ...(role === "shopkeeper" ? { shop_name: shopName.trim() } : {}),
+    };
 
     console.log("Signup Payload:", payload);
     navigation.replace("Home");
   };
 
+  const screenWidth = Dimensions.get("window").width;
+
   return (
     <View style={styles.mainContainer}>
+      {/* Theme Toggle */}
       <IconButton
-          icon={isDark ? "weather-sunny" : "weather-night"}
-          size={24}
-          onPress={onToggleTheme}
-          style={styles.themeToggle}
+        icon={isDark ? "weather-sunny" : "weather-night"}
+        size={24}
+        onPress={onToggleTheme}
+        style={styles.themeToggle}
       />
+
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
       >
         <ScrollView
-          showsVerticalScrollIndicator={true} style={{ flex: 1 }}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{
+            flexGrow: 1,
+            paddingHorizontal: screenWidth < 360 ? 12 : 20,
+            paddingTop: 60,
+            paddingBottom: 40,
+            backgroundColor: colors.background,
+          }}
         >
-          <View style={[styles.formContainer, { backgroundColor: colors.background }]}>
-            <Text variant="headlineLarge" style={[styles.title, { color: colors.primary, marginTop: 30}]}>
+          <View style={styles.formInner}>
+            <Text
+              variant="headlineLarge"
+              style={[styles.title, { color: colors.primary, marginBottom: 25 }]}
+            >
               Create Account
             </Text>
 
@@ -164,12 +138,12 @@ export default function SignupScreen({ navigation, route, onToggleTheme, isDark}
                 { value: "customer", label: "Customer", icon: "account" },
                 { value: "shopkeeper", label: "Shopkeeper", icon: "store" },
               ]}
-              style={{ marginBottom: 12 }}
+              style={styles.segmented}
             />
 
-            {/* Common Fields */}
+            {/* First Name */}
             <TextInput
-              label="Full Name"
+              label="First Name"
               value={name}
               onChangeText={setName}
               mode="outlined"
@@ -177,8 +151,25 @@ export default function SignupScreen({ navigation, route, onToggleTheme, isDark}
               error={!!errors.name}
               left={<TextInput.Icon icon="account-outline" />}
             />
-            <HelperText type="error" visible={!!errors.name}>{errors.name}</HelperText>
+            <HelperText type="error" visible={!!errors.name}>
+              {errors.name}
+            </HelperText>
 
+            {/* Last Name */}
+            <TextInput
+              label="Last Name"
+              value={lastname}
+              onChangeText={setLastName}
+              mode="outlined"
+              style={styles.input}
+              error={!!errors.lastname}
+              left={<TextInput.Icon icon="account-outline" />}
+            />
+            <HelperText type="error" visible={!!errors.lastname}>
+              {errors.lastname}
+            </HelperText>
+
+            {/* Email */}
             <TextInput
               label="Email"
               value={email}
@@ -188,21 +179,28 @@ export default function SignupScreen({ navigation, route, onToggleTheme, isDark}
               style={styles.input}
               error={!!errors.email}
               left={<TextInput.Icon icon="email-outline" />}
+              autoCapitalize="none"
             />
-            <HelperText type="error" visible={!!errors.email}>{errors.email}</HelperText>
+            <HelperText type="error" visible={!!errors.email}>
+              {errors.email}
+            </HelperText>
 
+            {/* Phone */}
             <TextInput
-              label="Phone"
+              label="Phone Number"
               value={phone}
               onChangeText={setPhone}
               mode="outlined"
-              keyboardType="phone-pad"
+              keyboardType="number-pad"
               style={styles.input}
               error={!!errors.phone}
               left={<TextInput.Icon icon="phone-outline" />}
             />
-            <HelperText type="error" visible={!!errors.phone}>{errors.phone}</HelperText>
+            <HelperText type="error" visible={!!errors.phone}>
+              {errors.phone}
+            </HelperText>
 
+            {/* Password */}
             <TextInput
               label="Password"
               value={password}
@@ -213,8 +211,11 @@ export default function SignupScreen({ navigation, route, onToggleTheme, isDark}
               error={!!errors.password}
               left={<TextInput.Icon icon="lock-outline" />}
             />
-            <HelperText type="error" visible={!!errors.password}>{errors.password}</HelperText>
+            <HelperText type="error" visible={!!errors.password}>
+              {errors.password}
+            </HelperText>
 
+            {/* Confirm Password */}
             <TextInput
               label="Confirm Password"
               value={confirm}
@@ -225,190 +226,11 @@ export default function SignupScreen({ navigation, route, onToggleTheme, isDark}
               error={!!errors.confirm}
               left={<TextInput.Icon icon="lock-check-outline" />}
             />
-            <HelperText type="error" visible={!!errors.confirm}>{errors.confirm}</HelperText>
+            <HelperText type="error" visible={!!errors.confirm}>
+              {errors.confirm}
+            </HelperText>
 
-            {/* Customer Fields */}
-            {role === "customer" && (
-              <>
-                {/* DOB as TextInput */}
-                <TouchableOpacity onPress={() => setShowDatePicker(true)}>
-                  <TextInput
-                    label="Date of Birth"
-                    value={dob}
-                    mode="outlined"
-                    style={styles.input}
-                    editable={false}
-                    placeholder="Select Date of Birth"
-                    left={<TextInput.Icon icon="calendar" />}
-                    error={!!errors.dob}
-                  />
-                </TouchableOpacity>
-                <HelperText type="error" visible={!!errors.dob}>{errors.dob}</HelperText>
-
-                {showDatePicker && (
-                  <DateTimePicker
-                    value={new Date()}
-                    mode="date"
-                    display={Platform.OS === "ios" ? "spinner" : "default"}
-                    maximumDate={new Date()}
-                    onChange={(event, selectedDate) => {
-                      setShowDatePicker(false);
-                      if (selectedDate) {
-                        const d = selectedDate;
-                        const formatted = `${("0" + d.getDate()).slice(-2)}-${(
-                          "0" + (d.getMonth() + 1)
-                        ).slice(-2)}-${d.getFullYear()}`;
-                        setDob(formatted);
-                      }
-                    }}
-                  />
-                )}
-
-                <Text style={styles.section}>Shipping Address</Text>
-                <TextInput
-                  label="Street Address"
-                  value={shipping.street}
-                  onChangeText={(t) => setShipping({ ...shipping, street: t })}
-                  mode="outlined"
-                  style={styles.input}
-                  error={!!errors.shippingStreet}
-                  left={<TextInput.Icon icon="home-outline" />}
-                />
-                <HelperText type="error" visible={!!errors.shippingStreet}>{errors.shippingStreet}</HelperText>
-
-                <TextInput
-                  label="City"
-                  value={shipping.city}
-                  onChangeText={(t) => setShipping({ ...shipping, city: t })}
-                  mode="outlined"
-                  style={styles.input}
-                  error={!!errors.shippingCity}
-                  left={<TextInput.Icon icon="city" />}
-                />
-                <HelperText type="error" visible={!!errors.shippingCity}>{errors.shippingCity}</HelperText>
-
-                <TextInput
-                  label="State"
-                  value={shipping.state}
-                  onChangeText={(t) => setShipping({ ...shipping, state: t })}
-                  mode="outlined"
-                  style={styles.input}
-                  error={!!errors.shippingState}
-                  left={<TextInput.Icon icon="map" />}
-                />
-                <HelperText type="error" visible={!!errors.shippingState}>{errors.shippingState}</HelperText>
-
-                <TextInput
-                  label="Postal Code"
-                  value={shipping.postal}
-                  onChangeText={(t) => setShipping({ ...shipping, postal: t.replace(/[^0-9]/g, "") })}
-                  mode="outlined"
-                  keyboardType="numeric"
-                  style={styles.input}
-                  error={!!errors.shippingPostal}
-                  left={<TextInput.Icon icon="numeric" />}
-                />
-                <HelperText type="error" visible={!!errors.shippingPostal}>{errors.shippingPostal}</HelperText>
-
-                <TextInput
-                  label="Country"
-                  value={shipping.country}
-                  onChangeText={(t) => setShipping({ ...shipping, country: t })}
-                  mode="outlined"
-                  style={styles.input}
-                  error={!!errors.shippingCountry}
-                  left={<TextInput.Icon icon="earth" />}
-                />
-                <HelperText type="error" visible={!!errors.shippingCountry}>{errors.shippingCountry}</HelperText>
-
-                {/* Address Type Radio */}
-                <RadioButton.Group
-                  onValueChange={(value) => setShipping({ ...shipping, type: value })}
-                  value={shipping.type}
-                >
-                  <View style={{ flexDirection: "row", alignItems: "center", marginVertical: 4 }}>
-                    <RadioButton value="home" />
-                    <Text style={{ marginRight: 16 }}>Home</Text>
-                    <RadioButton value="work" />
-                    <Text style={{ marginRight: 16 }}>Work</Text>
-                    <RadioButton value="shop" />
-                    <Text>Shop</Text>
-                  </View>
-                </RadioButton.Group>
-
-                {/* Billing */}
-                <View style={{ flexDirection: "row", alignItems: "center", marginVertical: 6 }}>
-                  <Checkbox
-                    status={sameAsShipping ? "checked" : "unchecked"}
-                    onPress={() => setSameAsShipping(!sameAsShipping)}
-                  />
-                  <Text>Billing address same as shipping</Text>
-                </View>
-
-                {!sameAsShipping && (
-                  <>
-                    <Text style={styles.section}>Billing Address</Text>
-                    <TextInput
-                      label="Street Address"
-                      value={billing.street}
-                      onChangeText={(t) => setBilling({ ...billing, street: t })}
-                      mode="outlined"
-                      style={styles.input}
-                      error={!!errors.billingStreet}
-                      left={<TextInput.Icon icon="home-outline" />}
-                    />
-                    <HelperText type="error" visible={!!errors.billingStreet}>{errors.billingStreet}</HelperText>
-
-                    <TextInput
-                      label="City"
-                      value={billing.city}
-                      onChangeText={(t) => setBilling({ ...billing, city: t })}
-                      mode="outlined"
-                      style={styles.input}
-                      error={!!errors.billingCity}
-                      left={<TextInput.Icon icon="city" />}
-                    />
-                    <HelperText type="error" visible={!!errors.billingCity}>{errors.billingCity}</HelperText>
-
-                    <TextInput
-                      label="State"
-                      value={billing.state}
-                      onChangeText={(t) => setBilling({ ...billing, state: t })}
-                      mode="outlined"
-                      style={styles.input}
-                      error={!!errors.billingState}
-                      left={<TextInput.Icon icon="map" />}
-                    />
-                    <HelperText type="error" visible={!!errors.billingState}>{errors.billingState}</HelperText>
-
-                    <TextInput
-                      label="Postal Code"
-                      value={billing.postal}
-                      onChangeText={(t) => setBilling({ ...billing, postal: t.replace(/[^0-9]/g, "") })}
-                      mode="outlined"
-                      keyboardType="numeric"
-                      style={styles.input}
-                      error={!!errors.billingPostal}
-                      left={<TextInput.Icon icon="numeric" />}
-                    />
-                    <HelperText type="error" visible={!!errors.billingPostal}>{errors.billingPostal}</HelperText>
-
-                    <TextInput
-                      label="Country"
-                      value={billing.country}
-                      onChangeText={(t) => setBilling({ ...billing, country: t })}
-                      mode="outlined"
-                      style={styles.input}
-                      error={!!errors.billingCountry}
-                      left={<TextInput.Icon icon="earth" />}
-                    />
-                    <HelperText type="error" visible={!!errors.billingCountry}>{errors.billingCountry}</HelperText>
-                  </>
-                )}
-              </>
-            )}
-
-            {/* Shopkeeper Fields */}
+            {/* Shop Name (for shopkeepers only) */}
             {role === "shopkeeper" && (
               <>
                 <TextInput
@@ -417,79 +239,32 @@ export default function SignupScreen({ navigation, route, onToggleTheme, isDark}
                   onChangeText={setShopName}
                   mode="outlined"
                   style={styles.input}
-                  left={<TextInput.Icon icon="store" />}
                   error={!!errors.shopName}
+                  left={<TextInput.Icon icon="store" />}
                 />
-                <HelperText type="error" visible={!!errors.shopName}>{errors.shopName}</HelperText>
-
-                <Text style={styles.section}>Shop Address</Text>
-                <TextInput
-                  label="Street Address"
-                  value={shopAddress.street}
-                  onChangeText={(t) => setShopAddress({ ...shopAddress, street: t })}
-                  mode="outlined"
-                  style={styles.input}
-                  error={!!errors.shopStreet}
-                  left={<TextInput.Icon icon="home-outline" />}
-                />
-                <HelperText type="error" visible={!!errors.shopStreet}>{errors.shopStreet}</HelperText>
-
-                <TextInput
-                  label="City"
-                  value={shopAddress.city}
-                  onChangeText={(t) => setShopAddress({ ...shopAddress, city: t })}
-                  mode="outlined"
-                  style={styles.input}
-                  error={!!errors.shopCity}
-                  left={<TextInput.Icon icon="city" />}
-                />
-                <HelperText type="error" visible={!!errors.shopCity}>{errors.shopCity}</HelperText>
-
-                <TextInput
-                  label="State"
-                  value={shopAddress.state}
-                  onChangeText={(t) => setShopAddress({ ...shopAddress, state: t })}
-                  mode="outlined"
-                  style={styles.input}
-                  error={!!errors.shopState}
-                  left={<TextInput.Icon icon="map" />}
-                />
-                <HelperText type="error" visible={!!errors.shopState}>{errors.shopState}</HelperText>
-
-                <TextInput
-                  label="Postal Code"
-                  value={shopAddress.postal}
-                  onChangeText={(t) => setShopAddress({ ...shopAddress, postal: t.replace(/[^0-9]/g, "") })}
-                  mode="outlined"
-                  keyboardType="numeric"
-                  style={styles.input}
-                  error={!!errors.shopPostal}
-                  left={<TextInput.Icon icon="numeric" />}
-                />
-                <HelperText type="error" visible={!!errors.shopPostal}>{errors.shopPostal}</HelperText>
-
-                <TextInput
-                  label="Country"
-                  value={shopAddress.country}
-                  onChangeText={(t) => setShopAddress({ ...shopAddress, country: t })}
-                  mode="outlined"
-                  style={styles.input}
-                  error={!!errors.shopCountry}
-                  left={<TextInput.Icon icon="earth" />}
-                />
-                <HelperText type="error" visible={!!errors.shopCountry}>{errors.shopCountry}</HelperText>
-
-                <Button mode="outlined" style={styles.uploadBtn}>Upload Logo</Button>
-                <Button mode="outlined" style={styles.uploadBtn}>Upload Banner</Button>
-                <Button mode="outlined" style={styles.uploadBtn}>Upload Address Proof</Button>
+                <HelperText type="error" visible={!!errors.shopName}>
+                  {errors.shopName}
+                </HelperText>
               </>
             )}
 
-            <Button mode="contained" onPress={handleSignup} style={styles.button}>
+            {/* Buttons */}
+            <Button
+              mode="contained"
+              onPress={handleSignup}
+              style={[styles.button, { backgroundColor: colors.primary }]}
+              labelStyle={{ fontSize: 16, fontWeight: "600" }}
+            >
               Sign Up
             </Button>
 
-            <Button onPress={() => navigation.goBack()} style={[{ marginBottom: 30}]}>Already have an account? Login</Button>
+            <Button
+              onPress={() => navigation.goBack()}
+              textColor={colors.primary}
+              style={{ marginTop: 10 }}
+            >
+              Already have an account? Login
+            </Button>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -498,27 +273,34 @@ export default function SignupScreen({ navigation, route, onToggleTheme, isDark}
 }
 
 const styles = StyleSheet.create({
-  mainContainer: {
-        flex: 1
-    },
-    keyboardContainer: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-  },
-  formContainer: {
-    paddingHorizontal: 16, // Use horizontal padding for left/right
-  },
-  title: { textAlign: "center", marginBottom: 12, fontWeight: "bold", marginTop: 15 },
-  input: { marginBottom: 6 },
-  section: { marginTop: 12, fontWeight: "bold", fontSize: 15 },
-  button: { marginTop: 8 },
-  uploadBtn: { marginBottom: 6 },
+  mainContainer: { flex: 1 },
   themeToggle: {
-        position: "absolute",
-        top: 20,
-        right: 20,
-        zIndex: 1, 
-    },
+    position: "absolute",
+    top: 20,
+    right: 20,
+    zIndex: 10,
+  },
+  formInner: {
+    flex: 1,
+    borderRadius: 18,
+    padding: 10,
+  },
+  title: {
+    textAlign: "center",
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+  segmented: {
+    alignSelf: "center",
+    marginBottom: 14,
+  },
+  input: {
+    marginBottom: 8,
+    borderRadius: 10,
+  },
+  button: {
+    marginTop: 15,
+    borderRadius: 12,
+    paddingVertical: 5,
+  },
 });

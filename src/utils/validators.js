@@ -1,102 +1,107 @@
 // src/utils/validators.js
 
-// ✅ Email Validation (RFC 5322 simplified)
+// ✅ Email Validation (RFC + required)
 export const validateEmail = (email) => {
+  if (!email || !email.trim()) return "Email is required";
   const re = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-  return re.test(String(email).toLowerCase())
-    ? ""
-    : "Invalid email address";
+  return re.test(email.trim().toLowerCase()) ? "" : "Invalid email format";
 };
 
-// ✅ Phone Validation (10–15 digits, allows country codes)
-export const validatePhone = (phone) => {
-  const re = /^\+?[0-9]{10,12}$/; 
-  return re.test(phone) ? "" : "Invalid phone number";
-};
-
-// ✅ Name Validation (letters + spaces, at least 2 chars)
-export const validateName = (name) => {
-  return /^[A-Za-z\s]{2,50}$/.test(name.trim())
-    ? ""
-    : "Name should be 2–50 letters only";
-};
-
-// ✅ Password Validation (min 6 chars, 1 letter & 1 number)
+// ✅ Password Validation (max 255 chars, required)
 export const validatePassword = (password) => {
-  const re = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d@$!%*?&]{6,}$/;
-  return re.test(password)
-    ? ""
-    : "Password must be at least 6 characters, include a letter & number";
+  if (!password || !password.trim()) return "Password is required";
+  if (password.length > 255)
+    return "Password cannot exceed 255 characters";
+  return "";
 };
 
-// ✅ DOB Validation (dd-mm-yyyy format + age >= 13)
-export const validateDOB = (dob) => {
-  if (!dob) return "Date of Birth is required";
-
-  // Match dd-mm-yyyy strictly
-  const re = /^([0-2][0-9]|3[0-1])-(0[1-9]|1[0-2])-(19|20)\d{2}$/;
-  if (!re.test(dob)) return "DOB must be in dd-mm-yyyy format";
-
-  const [day, month, year] = dob.split("-").map(Number);
-  const birthDate = new Date(year, month - 1, day);
-
-  if (isNaN(birthDate.getTime())) return "Invalid Date of Birth";
-
-  // ✅ Check age >= 13
-  const today = new Date();
-  let age = today.getFullYear() - year;
-  if (
-    today.getMonth() + 1 < month ||
-    (today.getMonth() + 1 === month && today.getDate() < day)
-  ) {
-    age--;
-  }
-
-  return age >= 13 ? "" : "You must be at least 13 years old";
+// ✅ First Name Validation (min 1, max 50)
+export const validateName = (name) => {
+  if (!name || !name.trim()) return "First name is required";
+  if (name.trim().length < 1 || name.trim().length > 50)
+    return "First name must be between 1 and 50 characters";
+  return "";
 };
 
-// ✅ Address Line Validation (basic check)
-export const validateAddress = (address) => {
-  return address && address.trim().length >= 5
-    ? ""
-    : "Address must be at least 5 characters";
+// ✅ Last Name Validation (min 1, max 50)
+export const validateLastName = (lastname) => {
+  if (!lastname || !lastname.trim()) return "Last name is required";
+  if (lastname.trim().length < 1 || lastname.trim().length > 50)
+    return "Last name must be between 1 and 50 characters";
+  return "";
 };
 
-// ✅ City Validation (letters only)
-export const validateCity = (city) => {
-  return /^[A-Za-z\s]{2,50}$/.test(city.trim())
-    ? ""
-    : "City should be 2–50 letters only";
+// ✅ Phone Number Validation (exact 10 digits)
+export const validatePhone = (phone) => {
+  if (!phone || !phone.trim()) return "Phone number is required";
+  const re = /^[0-9]{10}$/;
+  return re.test(phone) ? "" : "Phone number must be exactly 10 digits";
 };
 
-// ✅ State Validation (letters only)
-export const validateState = (state) => {
-  return /^[A-Za-z\s]{2,50}$/.test(state.trim())
-    ? ""
-    : "State should be 2–50 letters only";
-};
-
-// ✅ Postal Code Validation (5–10 digits/letters)
-export const validatePostalCode = (postalCode) => {
-  return /^[A-Za-z0-9\s-]{4,10}$/.test(postalCode.trim())
-    ? ""
-    : "Invalid postal code";
-};
-
-// ✅ Country Validation (letters only)
-export const validateCountry = (country) => {
-  return /^[A-Za-z\s]{2,50}$/.test(country.trim())
-    ? ""
-    : "Country should be 2–50 letters only";
-};
-
+// ✅ Shop Name Validation (similar to business-friendly)
 export const validateShopName = (shopName) => {
-  if (!shopName || shopName.trim().length < 3) {
+  if (!shopName || !shopName.trim()) return "Shop name is required";
+  if (shopName.trim().length < 3)
     return "Shop name must be at least 3 characters long";
-  }
-
   const re = /^[a-zA-Z0-9\s&-]+$/;
   return re.test(shopName)
     ? ""
-    : "Shop name can only contain letters, numbers, spaces, & and -";
+    : "Shop name can only contain letters, numbers, spaces, &, and -";
+};
+
+// ✅ Address Type Validation (enum: home, work, other)
+export const validateAddressType = (type) => {
+  if (!type) return "Address type is required";
+  const validTypes = ["home", "work", "other"];
+  return validTypes.includes(type.toLowerCase())
+    ? ""
+    : "Address type must be home, work, or other";
+};
+
+// ✅ Street Address Validation (max 255)
+export const validateAddress = (address) => {
+  if (!address || !address.trim()) return "Street address is required";
+  if (address.trim().length > 255)
+    return "Street address cannot exceed 255 characters";
+  return "";
+};
+
+// ✅ City Validation (max 100)
+export const validateCity = (city) => {
+  if (!city || !city.trim()) return "City is required";
+  if (city.trim().length > 100) return "City cannot exceed 100 characters";
+  return "";
+};
+
+// ✅ State Validation (max 100)
+export const validateState = (state) => {
+  if (!state || !state.trim()) return "State is required";
+  if (state.trim().length > 100) return "State cannot exceed 100 characters";
+  return "";
+};
+
+// ✅ Postal Code Validation (pattern /^[A-Za-z0-9 -]{3,15}$/)
+export const validatePostalCode = (postalCode) => {
+  if (!postalCode || !postalCode.trim()) return "Postal code is required";
+  const re = /^[A-Za-z0-9 -]{3,15}$/;
+  return re.test(postalCode.trim())
+    ? ""
+    : "Postal code must be 3–15 characters (letters, numbers, spaces, or -)";
+};
+
+// ✅ Country Validation (max 100)
+export const validateCountry = (country) => {
+  if (!country || !country.trim()) return "Country is required";
+  if (country.trim().length > 100)
+    return "Country cannot exceed 100 characters";
+  return "";
+};
+
+// ✅ Date of Birth Validation (date < now)
+export const validateDOB = (dob) => {
+  if (!dob) return "Date of birth is required";
+  const date = new Date(dob);
+  if (isNaN(date.getTime())) return "Invalid date format";
+  if (date >= new Date()) return "Date of birth must be before today";
+  return "";
 };
