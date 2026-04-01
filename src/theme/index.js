@@ -13,6 +13,7 @@ export const lightTheme = {
     secondary: brand.secondary,
     background: "#FFFFFF",
     surface: "#F7F7F7",
+    onSurface: "#222",
   },
 };
 

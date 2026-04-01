@@ -1,5 +1,7 @@
 // src/screens/Auth/SignupScreen.js
 import React, { useState } from "react";
+import { WIDTH, HEIGHT } from "../../utils/responsive";
+import axios from "axios";
 import {
   View,
   StyleSheet,
@@ -17,14 +19,7 @@ import {
   useTheme,
   IconButton,
 } from "react-native-paper";
-import {
-  validateEmail,
-  validatePassword,
-  validateName,
-  validateLastName,
-  validatePhone,
-  validateShopName,
-} from "../../utils/validators";
+import { validateShopKeeperSignupForm } from "../../utils/validators";
 
 export default function SignupScreen({
   navigation,
@@ -46,57 +41,132 @@ export default function SignupScreen({
 
   const [errors, setErrors] = useState({});
 
-  const validateAll = () => {
-    const newErrors = {};
+  const mapBackendErrorsToForm = (data) => {
+    const next = {};
+    if (!data || typeof data !== "object") return next;
 
-    // Match backend Joi schema
-    const firstNameErr = validateName(name);
-    if (firstNameErr) newErrors.name = firstNameErr;
+    const raw = data.errors ?? data.error ?? data.details;
+    const fieldMap = {
+      first_name: "name",
+      last_name: "lastname",
+      phone_number: "phone",
+      password_hash: "password",
+      confirm_password: "confirm",
+      user_type: "user_type",
+      email: "email",
+    };
 
-    const lastNameErr = validateLastName(lastname);
-    if (lastNameErr) newErrors.lastname = lastNameErr;
-
-    const emailErr = validateEmail(email);
-    if (emailErr) newErrors.email = emailErr;
-
-    const phoneErr = validatePhone(phone);
-    if (phoneErr) newErrors.phone = phoneErr;
-
-    const passwordErr = validatePassword(password);
-    if (passwordErr) newErrors.password = passwordErr;
-
-    if (!confirm || confirm.trim() === "")
-      newErrors.confirm = "Confirm password is required";
-    else if (confirm !== password)
-      newErrors.confirm = "Passwords do not match";
-
-    if (role === "shopkeeper") {
-      const shopErr = validateShopName(shopName);
-      if (shopErr) newErrors.shopName = shopErr;
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      for (const [k, v] of Object.entries(raw)) {
+        const key = fieldMap[k] ?? k;
+        const msg = Array.isArray(v) ? String(v[0] ?? "") : String(v ?? "");
+        if (msg) next[key] = msg;
+      }
+    } else if (Array.isArray(raw)) {
+      for (const item of raw) {
+        if (!item || typeof item !== "object") continue;
+        const k = item.path ?? item.field ?? item.key ?? item.param;
+        const key = fieldMap[k] ?? k;
+        const msg = String(item.message ?? item.msg ?? "");
+        if (key && msg) next[key] = msg;
+      }
     }
 
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    if (!next.general) {
+      const message = data.message ?? data.error ?? data.msg;
+      if (message && typeof message === "string") next.general = message;
+    }
+
+    return next;
   };
 
-  const handleSignup = () => {
+  const resetForm = () => {
+    setName("");
+    setLastName("");
+    setEmail("");
+    setPhone("");
+    setPassword("");
+    setConfirm("");
+    setShopName("");
+    setErrors({});
+  };
+
+  const handleRoleChange = (nextRole) => {
+    setRole(nextRole);
+    resetForm();
+  };
+
+  const validateAll = () => {
+    const userType = role === "shopkeeper" ? "shop_owner" : "customer";
+    const { isValid, errors: next } = validateShopKeeperSignupForm({
+      first_name: name,
+      last_name: lastname,
+      email,
+      phone_number: phone,
+      password_hash: password,
+      confirm_password: confirm,
+      user_type: userType
+    });
+    setErrors(next);
+    console.log("signup errors:", next);
+    console.log(isValid);
+    return isValid;
+  };
+
+  const handleSignup = async () => {
     if (!validateAll()) return;
+    setErrors((e) => ({ ...e, general: "" }));
 
     const payload = {
-      user_type: role,
+      user_type: role === "shopkeeper" ? "shop_owner" : "customer",
       first_name: name.trim(),
       last_name: lastname.trim(),
-      email: email.trim(),
+      email: email.trim().toLowerCase(),
       phone_number: phone.trim(),
       password_hash: password,
-      ...(role === "shopkeeper" ? { shop_name: shopName.trim() } : {}),
+      confirm_password: confirm
     };
 
     console.log("Signup Payload:", payload);
-    navigation.replace("Home");
-  };
+    try {
+      const res = await axios.post("http://10.98.61.172:3000/api/auth/v1/shopkeepers/register", payload, {
+        headers: {
+          "x-api-token": 456,
+          "Content-Type": "application/json",
+        },
+      });
+      console.log("Signup Response:", res.data);
+    } catch (error) {
+      const status = error?.response?.status;
+      const data = error?.response?.data;
 
-  const screenWidth = Dimensions.get("window").width;
+      if (status === 400) {
+        const backend = mapBackendErrorsToForm(data);
+        setErrors((prev) => ({
+          ...prev,
+          ...backend,
+          general:
+            backend.general ||
+            "Please fix the highlighted fields and try again.",
+        }));
+        return;
+      }
+
+      setErrors((prev) => ({
+        ...prev,
+        general:
+          data?.message ||
+          (status
+            ? `Request failed (${status}). Please try again.`
+            : "Network error. Please check your connection and try again."),
+      }));
+      console.error("Signup Error:", error);
+    }
+    // TODO: replace with real API
+    // optionally send role too     
+    // 🔹 TEMP SI
+    // navigation.replace("Home");
+  };
 
   return (
     <View style={styles.mainContainer}>
@@ -109,16 +179,20 @@ export default function SignupScreen({
       />
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
         style={{ flex: 1 }}
       >
         <ScrollView
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          automaticallyAdjustKeyboardInsets
           contentContainerStyle={{
             flexGrow: 1,
-            paddingHorizontal: screenWidth < 360 ? 12 : 20,
-            paddingTop: 60,
-            paddingBottom: 40,
+            paddingHorizontal: WIDTH("5%"),
+            paddingTop: HEIGHT("8%"),
+            paddingBottom: HEIGHT("5%"),
             backgroundColor: colors.background,
           }}
         >
@@ -133,7 +207,7 @@ export default function SignupScreen({
             {/* Role Switch */}
             <SegmentedButtons
               value={role}
-              onValueChange={setRole}
+              onValueChange={handleRoleChange}
               buttons={[
                 { value: "customer", label: "Customer", icon: "account" },
                 { value: "shopkeeper", label: "Shopkeeper", icon: "store" },
@@ -230,24 +304,6 @@ export default function SignupScreen({
               {errors.confirm}
             </HelperText>
 
-            {/* Shop Name (for shopkeepers only) */}
-            {role === "shopkeeper" && (
-              <>
-                <TextInput
-                  label="Shop Name"
-                  value={shopName}
-                  onChangeText={setShopName}
-                  mode="outlined"
-                  style={styles.input}
-                  error={!!errors.shopName}
-                  left={<TextInput.Icon icon="store" />}
-                />
-                <HelperText type="error" visible={!!errors.shopName}>
-                  {errors.shopName}
-                </HelperText>
-              </>
-            )}
-
             {/* Buttons */}
             <Button
               mode="contained"
@@ -257,6 +313,12 @@ export default function SignupScreen({
             >
               Sign Up
             </Button>
+
+            {errors.general ? (
+              <HelperText type="error" visible>
+                {errors.general}
+              </HelperText>
+            ) : null}
 
             <Button
               onPress={() => navigation.goBack()}
@@ -276,31 +338,32 @@ const styles = StyleSheet.create({
   mainContainer: { flex: 1 },
   themeToggle: {
     position: "absolute",
-    top: 20,
-    right: 20,
-    zIndex: 10,
+    top: HEIGHT("3%"),
+    right: WIDTH("4%"),
+    zIndex: 10
   },
   formInner: {
     flex: 1,
-    borderRadius: 18,
-    padding: 10,
+   borderRadius: WIDTH("4%"),
+    padding: WIDTH("2%"),
   },
   title: {
     textAlign: "center",
     fontWeight: "700",
     letterSpacing: 0.5,
+    fontSize: HEIGHT("3%"),
   },
   segmented: {
     alignSelf: "center",
-    marginBottom: 14,
+    marginBottom: HEIGHT("2%"),
   },
   input: {
-    marginBottom: 8,
-    borderRadius: 10,
+    marginBottom: HEIGHT("1.2%"),
+  borderRadius: WIDTH("2%"),
   },
   button: {
-    marginTop: 15,
-    borderRadius: 12,
-    paddingVertical: 5,
+    marginTop: HEIGHT("2%"),
+  borderRadius: WIDTH("3%"),
+  paddingVertical: HEIGHT("1.2%"),
   },
 });
