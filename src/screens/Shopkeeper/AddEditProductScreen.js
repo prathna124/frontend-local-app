@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   ScrollView,
   StyleSheet,
@@ -6,10 +6,9 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Modal,
-  FlatList,
   TouchableOpacity,
   Keyboard,
+  Image,
 } from "react-native";
 import {
   Text,
@@ -18,10 +17,9 @@ import {
   Switch,
   Surface,
   HelperText,
-  Divider,
-  useTheme,
 } from "react-native-paper";
 import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
+import * as ImagePicker from "expo-image-picker";
 import {
   getProductCategories,
   getMyShops,
@@ -32,7 +30,6 @@ import { validateProductForm } from "../../utils/validators";
 import { useShop } from "../../context/ShopContext";
 
 const AddEditProductScreen = ({ navigation, route }) => {
-  const theme = useTheme();
   const { shopId: routeShopId, product } = route.params || {};
   const { shops: contextShops, activeShop } = useShop();
 
@@ -53,18 +50,19 @@ const AddEditProductScreen = ({ navigation, route }) => {
   const [formErrors, setFormErrors] = useState({});
 
   const [selectedShopId, setSelectedShopId] = useState(null);
-  const [shopModalVisible, setShopModalVisible] = useState(false);
+  /** 'shop' | 'category' | null — only one inline dropdown open at a time */
+  const [openDropdown, setOpenDropdown] = useState(null);
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [selectedCategoryId, setSelectedCategoryId] = useState(null);
-  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
 
   const [basePrice, setBasePrice] = useState("");
   const [discountPrice, setDiscountPrice] = useState("");
   const [quantityAvailable, setQuantityAvailable] = useState("");
   const [sku, setSku] = useState("");
   const [status, setStatus] = useState("active");
+  const [productImage, setProductImage] = useState(null);
 
   useEffect(() => {
     navigation.setOptions({
@@ -130,6 +128,15 @@ const AddEditProductScreen = ({ navigation, route }) => {
         [];
       const firstId = Array.isArray(ids) && ids.length > 0 ? Number(ids[0]) : null;
       setSelectedCategoryId(Number.isFinite(firstId) ? firstId : null);
+
+      const img =
+        product.image_url ??
+        product.primary_image_url ??
+        (Array.isArray(product.images) && product.images.length > 0
+          ? product.images.find((im) => im?.is_primary)?.image_url ??
+            product.images[0]?.image_url
+          : null);
+      if (img) setProductImage({ uri: img });
     }
   }, [isEdit, product]);
 
@@ -143,15 +150,31 @@ const AddEditProductScreen = ({ navigation, route }) => {
   );
   const selectedShop = shops.find((s) => s.shop_id === selectedShopId);
 
-  const openShopModal = useCallback(() => {
+  const toggleShopDropdown = () => {
+    if (shopPickerLocked) return;
     Keyboard.dismiss();
-    setShopModalVisible(true);
-  }, []);
+    setOpenDropdown((k) => (k === "shop" ? null : "shop"));
+  };
 
-  const openCategoryModal = useCallback(() => {
+  const toggleCategoryDropdown = () => {
     Keyboard.dismiss();
-    setCategoryModalVisible(true);
-  }, []);
+    setOpenDropdown((k) => (k === "category" ? null : "category"));
+  };
+
+  const pickProductImage = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      alert("Permission required!");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+    });
+    if (!result.canceled) {
+      setProductImage(result.assets[0]);
+    }
+  };
 
   const handleSave = async () => {
     const payload = {
@@ -165,6 +188,7 @@ const AddEditProductScreen = ({ navigation, route }) => {
       status: status,
       category_ids:
         selectedCategoryId != null ? [selectedCategoryId] : [],
+      image_url: productImage?.uri || null,
     };
 
     const { isValid, errors } = validateProductForm(payload);
@@ -204,6 +228,8 @@ const AddEditProductScreen = ({ navigation, route }) => {
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
+        onScrollBeginDrag={() => setOpenDropdown(null)}
       >
         <Surface style={styles.card} elevation={1}>
           <Text variant="titleSmall" style={styles.cardHint}>
@@ -211,16 +237,27 @@ const AddEditProductScreen = ({ navigation, route }) => {
           </Text>
 
           {/* Shop (public.shops) */}
-          <Text style={styles.fieldLabel}>Shop *</Text>
-          <PickerField
+          <InlineExpandableSelect
+            expanded={openDropdown === "shop"}
+            onToggle={toggleShopDropdown}
             loading={shopsLoading}
             placeholder="Select shop"
-            value={selectedShop?.shop_name}
+            displayValue={selectedShop?.shop_name}
             error={!!formErrors.shop_id}
             disabled={shopPickerLocked}
-            onPress={openShopModal}
-            icon="store-outline"
-            theme={theme}
+            data={shops}
+            emptyLabel="No shops available"
+            selectedId={selectedShopId}
+            getItemId={(item) => item.shop_id}
+            renderLabel={(item) => item.shop_name}
+            renderSubtitle={(item) =>
+              item.status ? `Status: ${item.status}` : null
+            }
+            onSelectItem={(item) => {
+              setSelectedShopId(item.shop_id);
+              setFormErrors((e) => ({ ...e, shop_id: "" }));
+              setOpenDropdown(null);
+            }}
           />
           {shopPickerLocked && (
             <HelperText type="info" visible>
@@ -230,8 +267,6 @@ const AddEditProductScreen = ({ navigation, route }) => {
           <HelperText type="error" visible={!!formErrors.shop_id}>
             {formErrors.shop_id}
           </HelperText>
-
-          <Divider style={styles.divider} />
 
           {/* PRODUCT NAME */}
           <TextInput
@@ -262,18 +297,28 @@ const AddEditProductScreen = ({ navigation, route }) => {
             multiline
             numberOfLines={3}
             returnKeyType="next"
+            
           />
 
-          {/* Product category — Modal picker (reliable vs Menu in ScrollView) */}
-          <Text style={styles.fieldLabel}>Product Category *</Text>
-          <PickerField
+          {/* Product category (product_categories) */}
+          <InlineExpandableSelect
+            expanded={openDropdown === "category"}
+            onToggle={toggleCategoryDropdown}
             loading={categoriesLoading}
             placeholder="Select category"
-            value={selectedCategory?.name}
+            displayValue={selectedCategory?.name}
             error={!!formErrors.category_ids}
-            onPress={openCategoryModal}
-            icon="shape-outline"
-            theme={theme}
+            disabled={false}
+            data={categoryOptions}
+            emptyLabel="No categories available"
+            selectedId={selectedCategoryId}
+            getItemId={(item) => item.category_id}
+            renderLabel={(item) => `${"  ".repeat(item.depth)}${item.name}`.trim()}
+            onSelectItem={(item) => {
+              setSelectedCategoryId(item.category_id);
+              setFormErrors((e) => ({ ...e, category_ids: "" }));
+              setOpenDropdown(null);
+            }}
           />
           <HelperText type="error" visible={!!formErrors.category_ids}>
             {formErrors.category_ids}
@@ -351,13 +396,19 @@ const AddEditProductScreen = ({ navigation, route }) => {
           />
 
           <Button
-            icon="image"
             mode="outlined"
+            icon="upload"
             style={styles.uploadBtn}
-            onPress={() => {}}
+            onPress={pickProductImage}
           >
             Upload Product Image
           </Button>
+          {productImage?.uri ? (
+            <Image
+              source={{ uri: productImage.uri }}
+              style={styles.productImagePreview}
+            />
+          ) : null}
 
           <View style={styles.switchRow}>
             <Text>Product Active</Text>
@@ -384,190 +435,108 @@ const AddEditProductScreen = ({ navigation, route }) => {
           {isEdit ? "UPDATE PRODUCT" : "SAVE PRODUCT"}
         </Button>
       </ScrollView>
-
-      <SelectModal
-        visible={shopModalVisible}
-        onDismiss={() => setShopModalVisible(false)}
-        title="Select shop"
-        theme={theme}
-        data={shops}
-        keyExtractor={(item) => String(item.shop_id)}
-        selectedId={selectedShopId}
-        onSelect={(item) => {
-          setSelectedShopId(item.shop_id);
-          setFormErrors((e) => ({ ...e, shop_id: "" }));
-        }}
-        renderTitle={(item) => item.shop_name}
-        renderSubtitle={(item) =>
-          item.status ? `Status: ${item.status}` : null
-        }
-      />
-
-      <SelectModal
-        visible={categoryModalVisible}
-        onDismiss={() => setCategoryModalVisible(false)}
-        title="Select category"
-        theme={theme}
-        data={categoryOptions}
-        keyExtractor={(item) => String(item.category_id)}
-        selectedId={selectedCategoryId}
-        onSelect={(item) => {
-          setSelectedCategoryId(item.category_id);
-          setFormErrors((e) => ({ ...e, category_ids: "" }));
-        }}
-        renderTitle={(item) => `${"  ".repeat(item.depth)}${item.name}`}
-        emptyMessage="No categories found"
-      />
     </KeyboardAvoidingView>
   );
 }
 
-function PickerField({
+function InlineExpandableSelect({
+  expanded,
+  onToggle,
   loading,
   placeholder,
-  value,
+  displayValue,
   error,
   disabled,
-  onPress,
-  icon,
-  theme,
+  data,
+  emptyLabel,
+  selectedId,
+  getItemId,
+  renderLabel,
+  renderSubtitle,
+  onSelectItem,
 }) {
+  const showChevron = !disabled && !loading;
+  const headerText = displayValue || placeholder;
+  const isPlaceholder = !displayValue;
+
   return (
-    <TouchableOpacity
-      activeOpacity={0.75}
-      onPress={onPress}
-      disabled={disabled || loading}
+    <View
       style={[
-        styles.pickerRow,
-        {
-          borderColor: error ? theme.colors.error : "#E0E0E0",
-          backgroundColor: disabled ? "#F5F5F5" : "#FAFAFA",
-          opacity: disabled ? 0.85 : 1,
-        },
+        styles.ddOuter,
+        { marginTop: 12 },
+        expanded && styles.ddOuterExpanded,
+        disabled && styles.ddOuterDisabled,
       ]}
     >
-      {loading ? (
-        <ActivityIndicator size="small" color={theme.colors.primary} />
-      ) : (
-        <>
-          <MaterialCommunityIcons
-            name={icon}
-            size={22}
-            color={theme.colors.onSurfaceVariant}
-          />
-          <Text
-            style={[
-              styles.pickerText,
-              !value && styles.pickerPlaceholder,
-            ]}
-            numberOfLines={1}
-          >
-            {value || placeholder}
-          </Text>
-          <MaterialCommunityIcons
-            name="chevron-down"
-            size={22}
-            color={theme.colors.onSurfaceVariant}
-          />
-        </>
-      )}
-    </TouchableOpacity>
-  );
-}
-
-function SelectModal({
-  visible,
-  onDismiss,
-  title,
-  data,
-  keyExtractor,
-  selectedId,
-  onSelect,
-  renderTitle,
-  renderSubtitle,
-  emptyMessage,
-  theme,
-}) {
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onDismiss}
-      statusBarTranslucent
-    >
-      <View style={styles.modalRoot}>
-        <TouchableOpacity
-          style={styles.modalBackdrop}
-          activeOpacity={1}
-          onPress={onDismiss}
-        />
-        <View style={[styles.modalSheet, { backgroundColor: theme.colors.surface }]}>
-          <View style={styles.modalHeader}>
-            <Text variant="titleMedium" style={{ color: theme.colors.onSurface }}>
-              {title}
+      <TouchableOpacity
+        activeOpacity={disabled ? 1 : 0.85}
+        onPress={() => {
+          if (disabled || loading) return;
+          onToggle();
+        }}
+        style={styles.ddTrigger}
+      >
+        {loading ? (
+          <ActivityIndicator size="small" style={styles.ddLoader} />
+        ) : (
+          <>
+            <Text
+              style={[
+                styles.ddTriggerText,
+                isPlaceholder && styles.ddTriggerPlaceholder,
+              ]}
+              numberOfLines={1}
+            >
+              {headerText}
             </Text>
-            <TouchableOpacity onPress={onDismiss} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-              <MaterialCommunityIcons name="close" size={24} color={theme.colors.onSurfaceVariant} />
-            </TouchableOpacity>
-          </View>
-          <Divider />
+            {showChevron && (
+              <MaterialCommunityIcons
+                name={expanded ? "chevron-up" : "chevron-down"}
+                size={22}
+              />
+            )}
+          </>
+        )}
+      </TouchableOpacity>
+
+      {expanded && !loading && !disabled && (
+        <View style={styles.ddList}>
           {data.length === 0 ? (
-            <View style={styles.modalEmpty}>
-              <Text style={{ color: theme.colors.onSurfaceVariant }}>
-                {emptyMessage ?? "Nothing to show"}
-              </Text>
+            <View style={styles.ddEmpty}>
+              <Text style={styles.ddEmptyText}>{emptyLabel}</Text>
             </View>
           ) : (
-            <FlatList
-              data={data}
-              keyExtractor={keyExtractor}
+            <ScrollView
+              nestedScrollEnabled
               keyboardShouldPersistTaps="handled"
-              style={styles.modalList}
-              initialNumToRender={20}
-              windowSize={10}
-              renderItem={({ item }) => {
-                const id = item.shop_id ?? item.category_id;
+              style={styles.ddScroll}
+              contentContainerStyle={styles.ddScrollContent}
+            >
+              {data.map((item) => {
+                const id = getItemId(item);
                 const selected = selectedId === id;
                 return (
                   <TouchableOpacity
+                    key={String(id)}
+                    activeOpacity={0.75}
                     style={[
-                      styles.modalItem,
-                      selected && { backgroundColor: theme.colors.primaryContainer },
+                      styles.ddItem,
+                      selected,
                     ]}
-                    onPress={() => {
-                      onSelect(item);
-                      onDismiss();
-                    }}
-                    activeOpacity={0.7}
+                    onPress={() => onSelectItem(item)}
                   >
-                    <Text
-                      style={[
-                        styles.modalItemTitle,
-                        { color: theme.colors.onSurface },
-                        selected && { fontWeight: "600", color: theme.colors.onPrimaryContainer },
-                      ]}
-                    >
-                      {renderTitle(item)}
-                    </Text>
+                    <Text style={styles.ddItemTitle}>{renderLabel(item)}</Text>
                     {renderSubtitle?.(item) ? (
-                      <Text
-                        style={[
-                          styles.modalItemSub,
-                          { color: theme.colors.onSurfaceVariant },
-                        ]}
-                      >
-                        {renderSubtitle(item)}
-                      </Text>
+                      <Text style={styles.ddItemSub}>{renderSubtitle(item)}</Text>
                     ) : null}
                   </TouchableOpacity>
                 );
-              }}
-            />
+              })}
+            </ScrollView>
           )}
         </View>
-      </View>
-    </Modal>
+      )}
+    </View>
   );
 }
 
@@ -577,11 +546,18 @@ function getMockCategories() {
     { category_id: 2, name: "Dairy", parent_category_id: null },
     { category_id: 3, name: "Bakery", parent_category_id: null },
     { category_id: 4, name: "Vegetables", parent_category_id: null },
-    { category_id: 5, name: "Grocery", parent_category_id: null },
-    { category_id: 6, name: "Dairy", parent_category_id: null },
-    { category_id: 7, name: "Bakery", parent_category_id: null },
-    { category_id: 8, name: "Vegetables", parent_category_id: null },
-  ];  
+    { category_id: 5, name: "Fruits", parent_category_id: null },
+    { category_id: 6, name: "Meat", parent_category_id: null },
+    { category_id: 7, name: "Fish", parent_category_id: null },
+    { category_id: 8, name: "Eggs", parent_category_id: null },
+    { category_id: 9, name: "Seafood", parent_category_id: null },  
+    { category_id: 10, name: "Poultry", parent_category_id: null },
+    { category_id: 11, name: "Beverages", parent_category_id: null },
+    { category_id: 12, name: "Alcohol", parent_category_id: null },
+    { category_id: 13, name: "Snacks", parent_category_id: null },
+    { category_id: 14, name: "Dairy", parent_category_id: null },
+    { category_id: 15, name: "Dairy", parent_category_id: null },
+  ];
 }
 
 /** public.shops → shop_id, shop_name, status */
@@ -647,8 +623,6 @@ function orderCategoriesForDropdown(normalized) {
   return result;
 }
 
-export default AddEditProductScreen;
-
 const styles = StyleSheet.create({
   wrapper: {
     flex: 1,
@@ -678,27 +652,87 @@ const styles = StyleSheet.create({
   input: {
     marginTop: 12,
   },
-  pickerRow: {
+  ddOuter: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderRadius: 6,
+    backgroundColor: "#FFFFFF",
+    overflow: "hidden",
+  },
+  ddOuterExpanded: {
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.12,
+        shadowRadius: 10,
+      },
+      android: { elevation: 5 },
+    }),
+  },
+  ddOuterDisabled: {
+    backgroundColor: "#FAFAFA",
+    opacity: 0.92,
+  },
+  ddTrigger: {
     flexDirection: "row",
     alignItems: "center",
-    minHeight: 52,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 10,
+    justifyContent: "space-between",
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    minHeight: 56,
   },
-  pickerText: {
+  ddTriggerText: {
     flex: 1,
     fontSize: 16,
+    fontWeight: "600",
+    marginRight: 8,
   },
-  pickerPlaceholder: {
-    color: "#9E9E9E",
+  ddTriggerPlaceholder: {
+    fontWeight: "600",
   },
-  loader: {
-    marginVertical: 12,
+  ddLoader: {
+    marginVertical: 4,
+  },
+  ddList: {
+    backgroundColor: "#FFFFFF",
+  },
+  ddScroll: {
+    maxHeight: 260,
+  },
+  ddScrollContent: {
+    paddingBottom: 4,
+  },
+  ddItem: {
+    paddingVertical: 18,
+    paddingHorizontal: 16,
+    backgroundColor: "#FFFFFF",
+  },
+  ddItemTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  ddItemSub: {
+    fontSize: 12,
+    marginTop: 4,
+    fontWeight: "500",
+  },
+  ddEmpty: {
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+  },
+  ddEmptyText: {
+    fontSize: 14,
+    fontWeight: "500",
   },
   uploadBtn: {
-    marginTop: 16,
+    marginTop: 12,
+  },
+  productImagePreview: {
+    width: "100%",
+    height: 150,
+    marginTop: 10,
+    borderRadius: 8,
   },
   switchRow: {
     flexDirection: "row",
@@ -714,48 +748,6 @@ const styles = StyleSheet.create({
   submitError: {
     marginTop: 8,
   },
-  modalRoot: {
-    flex: 1,
-    justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.45)",
-  },
-  modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  modalSheet: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: "72%",
-    paddingBottom: Platform.OS === "ios" ? 28 : 16,
-    elevation: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  modalList: {
-    flexGrow: 0,
-  },
-  modalItem: {
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-  },
-  modalItemTitle: {
-    fontSize: 16,
-  },
-  modalItemSub: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  modalEmpty: {
-    padding: 32,
-    alignItems: "center",
-  },
 });
+
+export default AddEditProductScreen;

@@ -6,7 +6,6 @@ import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityI
 
 // Shopkeeper Screens
 import DashboardScreen from "../screens/Shopkeeper/DashboardScreen";
-import OrdersScreen from "../screens/Shopkeeper/OrdersScreen";
 import ProfileScreen from "../screens/Shopkeeper/ProfileScreen";
 
 import ProductsStack from "./ProductsStack";
@@ -62,27 +61,11 @@ export default function ShopkeeperTabs() {
         }}
       />
 
-      {/* <Tab.Screen
-        name="Orders"
-        component={OrdersScreen}
-        options={{
-          tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="clipboard-list-outline" color={color} size={size} />
-          ),
-        }}
-      />
+      {/* Orders / Customers — add screens when ready
+      <Tab.Screen name="Orders" component={OrdersScreen} ... />
+      */}
 
       <Tab.Screen
-        name="Customers"
-        component={CustomersScreen}
-        options={{
-          tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="account-group-outline" color={color} size={size} />
-          ),
-        }}
-      />
-
-      */<Tab.Screen
         name="Profile"
         component={ProfileScreen}
         options={{
@@ -90,7 +73,7 @@ export default function ShopkeeperTabs() {
             <MaterialCommunityIcons name="account-circle-outline" color={color} size={size} />
           ),
         }}
-      /> }
+      />
     </Tab.Navigator>
   );
 }

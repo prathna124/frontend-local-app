@@ -1,7 +1,12 @@
 import React, { useState, useRef } from "react";
 import { View, StyleSheet } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import api, { setAuthToken } from "../../api/api";
+import {
+  setAuthToken,
+  API_BASE_URL,
+  X_API_TOKEN,
+  getApiTokenHeaders,
+} from "../../api/api";
 import {
   Text,
   TextInput,
@@ -87,46 +92,83 @@ export default function LoginScreen({ navigation, onToggleTheme, isDark, onLogin
 
   const handleLogin = async () => {
     setTouched({ email: true, password: true, userType: true });
-
     if (!validateAll()) return;
-    onLoginSuccess({
-      role: userType, // "shopkeeper" or "customer"
-    });
-  //   try {
-  //   // 🔹 TEMP LOGIN (for testing without API)
-  //   onLoginSuccess({
-  //     role: userType, // "shopkeeper" or "customer"
-  //   });
 
-  //   // ================= REAL API (ENABLE LATER) =================
-  //   /*
-  //   const url =
-  //     "http://192.168.92.239:3000/api/auth/v1/customers/login";
+    setErrors((prev) => ({ ...prev, general: "" }));
 
-  //   const response = await axios.patch(
-  //     url,
-  //     { email, password, userType },
-  //     {
-  //       headers: {
-  //         "x-api-token": 456,
-  //         "Content-Type": "application/json",
-  //       },
-  //     }
-  //   );
+    // Backend register uses user_type: shop_owner | customer (see SignupScreen)
+    const user_type =
+      userType === "shopkeeper" ? "shop_owner" : "customer";
 
-  //   onLoginSuccess({
-  //     role: response.data.user.user_type, // shopkeeper / customer
-  //   });
-  //   */
+    const url = `${API_BASE_URL}/auth/v1/shopkeepers/login`;
 
-  // } catch (error) {
-  //   setErrors({
-  //     general:
-  //       error?.response?.data?.message ||
-  //       "Invalid email or password",
-  //   });
-  // }
-   
+    console.log("[Login] step 1: validation passed");
+    console.log("[Login] step 2: PATCH URL =", url);
+    console.log(
+      "[Login] step 3: x-api-token configured =",
+      X_API_TOKEN ? `yes (length ${X_API_TOKEN.length})` : "NO — set EXPO_PUBLIC_X_API_TOKEN"
+    );
+    console.log("[Login] step 4: user_type payload =", user_type);
+
+    try {
+      const response = await axios.patch(
+        url,
+        {
+          email: email.trim().toLowerCase(),
+          password,
+          user_type,
+        },
+        { headers: getApiTokenHeaders() }
+      );
+
+      console.log("[Login] step 5: success, status =", response.status);
+      console.log("[Login] step 6: response.data keys =", response.data && Object.keys(response.data));
+
+      const apiType =
+        response.data?.user?.user_type ?? response.data?.user_type;
+      const roleFromApi =
+        apiType === "shop_owner" || apiType === "shopkeeper"
+          ? "shopkeeper"
+          : apiType === "customer"
+          ? "customer"
+          : null;
+
+      const role =
+        roleFromApi ??
+        (userType === "shopkeeper" ? "shopkeeper" : "customer");
+
+      if (response.data?.token) {
+        await AsyncStorage.setItem("token", response.data.token);
+        setAuthToken(response.data.token);
+      }
+      await AsyncStorage.setItem("role", role);
+
+      const userToStore =
+        response.data?.user != null
+          ? response.data.user
+          : {
+              email: email.trim().toLowerCase(),
+              user_type,
+              role,
+            };
+      await AsyncStorage.setItem("user", JSON.stringify(userToStore));
+
+      onLoginSuccess({ role });
+    } catch (error) {
+      const status = error?.response?.status;
+      const msg = error?.response?.data?.message;
+      const data = error?.response?.data;
+      console.error("[Login] step FAIL: HTTP status =", status);
+      console.error("[Login] step FAIL: message =", msg ?? data);
+      console.error("[Login] step FAIL: full body =", data ?? error.message);
+      setErrors({
+        general:
+          msg ||
+          (status
+            ? `Login failed (${status}). Check user type and credentials.`
+            : "Network error. Same Wi‑Fi as server? Check IP in LoginScreen."),
+      });
+    }
   };
 
 

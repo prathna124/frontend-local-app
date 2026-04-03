@@ -3,6 +3,11 @@ import React, { useState } from "react";
 import { WIDTH, HEIGHT } from "../../utils/responsive";
 import axios from "axios";
 import {
+  API_BASE_URL,
+  X_API_TOKEN,
+  getApiTokenHeaders,
+} from "../../api/api";
+import {
   View,
   StyleSheet,
   KeyboardAvoidingView,
@@ -127,15 +132,20 @@ export default function SignupScreen({
       confirm_password: confirm
     };
 
-    console.log("Signup Payload:", payload);
+    const registerUrl = `${API_BASE_URL}/auth/v1/shopkeepers/register`;
+    console.log("[Signup] step 1: payload ready (email/user_type set)");
+    console.log("[Signup] step 2: URL =", registerUrl);
+    console.log(
+      "[Signup] step 3: x-api-token configured =",
+      X_API_TOKEN ? `yes (length ${X_API_TOKEN.length})` : "NO — set EXPO_PUBLIC_X_API_TOKEN"
+    );
+
     try {
-      const res = await axios.post("http://10.98.61.172:3000/api/auth/v1/shopkeepers/register", payload, {
-        headers: {
-          "x-api-token": 456,
-          "Content-Type": "application/json",
-        },
+      const res = await axios.post(registerUrl, payload, {
+        headers: getApiTokenHeaders(),
       });
-      console.log("Signup Response:", res.data);
+      console.log("[Signup] step 4: success, status =", res.status);
+      console.log("[Signup] step 5: response.data =", res.data);
     } catch (error) {
       const status = error?.response?.status;
       const data = error?.response?.data;
@@ -160,12 +170,13 @@ export default function SignupScreen({
             ? `Request failed (${status}). Please try again.`
             : "Network error. Please check your connection and try again."),
       }));
-      console.error("Signup Error:", error);
+      console.error("[Signup] step FAIL: status =", error?.response?.status);
+      console.error("[Signup] step FAIL: data =", error?.response?.data ?? error.message);
     }
     // TODO: replace with real API
     // optionally send role too     
     // 🔹 TEMP SI
-    // navigation.replace("Home");
+    //navigation.replace("Home");
   };
 
   return (
